@@ -1,5 +1,9 @@
 
 DEBUG = n
+# by default build vanilla
+TARGET := $(or $(mod), vanilla)
+
+$(info $$TARGET is [${TARGET}])
 
 # Add your debugging flag (or not) to EXTRA_CFLAGS
 ifeq ($(DEBUG),y)
@@ -7,6 +11,7 @@ ifeq ($(DEBUG),y)
 else
   DEBFLAGS = -Ofast
 endif
+
 
 # KERNEL_VERSION_MAJOR := $(shell uname -r | awk -F '.' '{print $$1}')
 # KERNEL_VERSION_MINOR := $(shell uname -r | awk -F '.' '{print $$2}')
@@ -20,8 +25,7 @@ endif
 EXTRA_CFLAGS += $(DEBFLAGS)
 EXTRA_CFLAGS += -std=gnu99 -Wno-declaration-after-statement -fgnu89-inline -D__KERNEL__
 
-TARGET = scubic
-$(TARGET)-objs := lib/serialize.o lib/spine_priv.o lib/spine.o tcp_spine.o tcp_scubic.o spine_nl.o
+$(TARGET)-objs := lib/serialize.o lib/spine_priv.o lib/spine.o tcp_spine.o tcp_$(TARGET).o spine_nl.o
 
 obj-m := $(TARGET).o
 
@@ -30,3 +34,10 @@ all:
 
 clean:
 	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(CURDIR) clean
+
+install: all
+	-sudo ./spine_kernel_unload.sh $(TARGET)
+	-sudo ./spine_kernel_load.sh $(TARGET)
+
+uninstall:
+	-sudo rmmod $(TARGET).ko

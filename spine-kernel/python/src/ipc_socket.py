@@ -118,6 +118,7 @@ class IPCSocket(object):
     def write_once(self):
         """Dump message from message buffer to IPC"""
         if not self.connected:
+            logger.error("Socket not connected")
             return -1
 
         if len(self.message_buffer) == 0:
@@ -176,7 +177,7 @@ class IPCSocket(object):
 
     def write(self, message: str, prepend_message_len=True):
         if not self.connected:
-            # logger.error("Socket not connected")
+            logger.error("Socket not connected")
             return -1
         message = message.encode("utf-8")
         if prepend_message_len:

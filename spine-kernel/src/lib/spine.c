@@ -23,7 +23,8 @@ int spine_init(struct spine_datapath *datapath, u32 id)
 	    datapath->now == NULL || datapath->since_usecs == NULL ||
 	    datapath->after_usecs == NULL ||
 	    datapath->spine_active_connections == NULL ||
-	    datapath->max_connections == 0 || datapath->fto_us == 0 || datapath->send_msg == NULL) {
+	    datapath->max_connections == 0 || datapath->fto_us == 0 ||
+	    datapath->send_msg == NULL) {
 		return SPINE_MISSING_ARG;
 	}
 	// send ready message
@@ -44,7 +45,8 @@ int spine_init(struct spine_datapath *datapath, u32 id)
 	return SPINE_OK;
 }
 
-void spine_free(struct spine_datapath *datapath) {
+void spine_free(struct spine_datapath *datapath)
+{
 	(void)(datapath);
 }
 
@@ -107,7 +109,7 @@ spine_connection_start(struct spine_datapath *datapath, void *impl,
 		return conn;
 	}
 	struct spine_priv_state *state = get_spine_priv_state(conn);
-    spine_conn_create_success(state);
+	spine_conn_create_success(state);
 	return conn;
 }
 
@@ -153,7 +155,13 @@ void spine_connection_free(struct spine_datapath *datapath, u16 sid)
 
 	free_spine_priv_state(conn);
 
-	msg_size = write_measure_msg(msg, REPORT_MSG_SIZE, sid, 0, 0, 0);
+	msg_size = write_release_msg(msg, RELEASE_MSG_SIZE, sid);
+
+	if (msg_size < 0) {
+		spine_error("cannot prepare release message");
+		return;
+	}
+
 	ret = datapath->send_msg(datapath, msg, msg_size);
 	if (ret < 0) {
 		if (!datapath->_in_fallback) {
@@ -168,7 +176,6 @@ void spine_connection_free(struct spine_datapath *datapath, u16 sid)
 	return;
 }
 
-
 int spine_invoke(struct spine_connection *conn)
 {
 	int ret = 0;
@@ -177,7 +184,13 @@ int spine_invoke(struct spine_connection *conn)
 	struct spine_datapath *datapath;
 	u8 num_params = 0;
 	u64 params[MAX_CONTROL_REG];
-	
+	u8 num_measure_fields = 0;
+	u64 tmp_measurements[MAX_MEASUREMENT_FIELDS];
+	u32 current_request;
+
+	char print_buf[1024];
+	int write_len = 0;
+
 	spine_trace("Entering %s\n", __FUNCTION__);
 	if (conn == NULL) {
 		return SPINE_NULL_ARG;
@@ -185,6 +198,7 @@ int spine_invoke(struct spine_connection *conn)
 	datapath = conn->datapath;
 	state = get_spine_priv_state(conn);
 
+	// spine_warn("Get into invoke!");
 	if (!state) {
 		spine_error("no private state for connection");
 		return SPINE_NULL_ARG;
@@ -192,21 +206,23 @@ int spine_invoke(struct spine_connection *conn)
 
 	// check init status
 	if (!(state->sent_create)) {
-        // try contacting the CCP again
-        // index of pointer back to this sock for IPC callback
-        spine_trace("%s retx create message\n", __FUNCTION__);
-        ret = send_conn_create(datapath, conn);
-        if (ret < 0) {
-            if (!datapath->_in_fallback) {
-                spine_warn("failed to retx create message: %d\n", ret);
-            }
-        } else {
-            spine_conn_create_success(state);
-        }
-        return SPINE_OK;
-    }
+		// try contacting the CCP again
+		// index of pointer back to this sock for IPC callback
+		spine_trace("%s retx create message\n", __FUNCTION__);
+		ret = send_conn_create(datapath, conn);
+		if (ret < 0) {
+			if (!datapath->_in_fallback) {
+				spine_warn(
+					"failed to retx create message: %d\n",
+					ret);
+			}
+		} else {
+			spine_conn_create_success(state);
+		}
+		return SPINE_OK;
+	}
 
-	// we assume consequent parameters
+	/* we assume consequent parameters */
 	for (i = 0; i < MAX_CONTROL_REG; i++) {
 		if (state->pending_update.control_is_pending[i]) {
 			params[i] = state->pending_update.control_registers[i];
@@ -220,6 +236,34 @@ int spine_invoke(struct spine_connection *conn)
 	if (num_params > 0 && datapath->set_params) {
 		datapath->set_params(conn, params, num_params);
 	}
+	/* process measurement requests */
+	if (state->pending_update.measure_is_pending) {
+		current_request =
+			state->pending_update.measure_registers;
+		// spine_warn("Receive a measurement request from Unix.");
+		if (datapath->fetch_measurements) {
+			datapath->fetch_measurements(
+				conn, tmp_measurements,
+				&num_measure_fields, current_request);
+			if (num_measure_fields > 0) {
+				// spine_warn("Send collected measurements.");
+				for (i = 0; i < num_measure_fields; i++){
+					write_len += snprintf(print_buf + write_len, 100, "%llu, ", tmp_measurements[i]);
+				}
+				ret = send_measurement(
+					conn, current_request,
+					tmp_measurements,
+					num_measure_fields);
+				if (ret < 0)
+					spine_warn(
+						"send measurement for request %d failed",
+						current_request)
+			}
+		}
+		// clear measure request flag
+		state->pending_update.measure_is_pending = false;
+	}
+
 	// clear staged status
 	memset(&state->pending_update, 0, sizeof(struct staged_update));
 	return ret;
@@ -268,6 +312,29 @@ int send_conn_create(struct spine_datapath *datapath,
 	return ret;
 }
 
+int send_measurement(struct spine_connection *conn, u32 request_id, u64 *fields,
+		     u8 num_fields)
+{
+	int ret;
+	char msg[REPORT_MSG_SIZE];
+	int msg_size;
+	struct spine_datapath *datapath __attribute__((unused)) =
+		conn->datapath;
+
+	if (conn->index < 1) {
+		return SPINE_CONNECTION_NOT_INITIALIZED;
+	}
+
+	msg_size = write_measure_msg(msg, REPORT_MSG_SIZE, conn->index,
+				     request_id, fields, num_fields);
+	spine_trace("[sid=%d] In %s\n", conn->index, __FUNCTION__);
+	ret = conn->datapath->send_msg(datapath, msg, msg_size);
+	if (ret) {
+		spine_debug("error sending measurement, updating fto timer");
+		_update_fto_timer(datapath);
+	}
+	return ret;
+}
 
 int stage_update(struct spine_datapath *datapath __attribute__((unused)),
 		 struct staged_update *pending_update,
@@ -309,6 +376,17 @@ int stage_multiple_updates(struct spine_datapath *datapath,
 	return SPINE_OK;
 }
 
+int stage_measure_request(struct spine_datapath *datapath,
+			  struct staged_update *pending_update, u64 measure_idx)
+{
+	int i;
+
+	/* find the first available regs to store the measures request index */
+	pending_update->measure_is_pending = true;
+	pending_update->measure_registers = measure_idx;
+	return SPINE_OK;
+}
+
 /* Read parameters from user-space RL algorithm
  * first save these parameters to staged registers
  */
@@ -317,7 +395,7 @@ int spine_read_msg(struct spine_datapath *datapath, char *buf, int bufsize)
 	// TODO: Implement semantics to read control message from user space
 	int ret;
 	int msg_program_index;
-	u32 num_updates;
+	u32 num_updates, measure_idx;
 	char *msg_ptr;
 	struct SpineMsgHeader hdr;
 	struct spine_connection *conn;
@@ -357,7 +435,7 @@ int spine_read_msg(struct spine_datapath *datapath, char *buf, int bufsize)
 
 	// here we only need this
 	if (hdr.Type == UPDATE_FIELDS) {
-		spine_debug("[sid=%d] Received update_fields message\n",
+		spine_trace("[sid=%d] Received update_fields message\n",
 			    conn->index);
 		ret = check_update_fields_msg(datapath, &hdr, &num_updates,
 					      msg_ptr);
@@ -378,7 +456,19 @@ int spine_read_msg(struct spine_datapath *datapath, char *buf, int bufsize)
 		}
 
 		spine_debug("Staged %u updates\n", num_updates);
-	} 
+	} else if (hdr.Type == MEASURE) {
+		spine_trace("[sid=%d] Received fetch measurements message\n",
+			    conn->index);
+		ret = check_measure_fields_msg(datapath, &hdr, &measure_idx,
+					       msg_ptr);
+		if (ret < 0) {
+			spine_warn("Invalid measure message: %d\n", ret);
+			return ret;
+		}
+		/* put the valid measure index to control regs*/
+		stage_measure_request(datapath, &state->pending_update,
+				      measure_idx);
+	}
 	return SPINE_OK;
 }
 

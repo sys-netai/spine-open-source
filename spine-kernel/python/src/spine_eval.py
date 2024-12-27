@@ -19,6 +19,7 @@ from poller import Action, Poller, ReturnStatus, PollEvents
 from helper import drop_privileges
 import msg_sender
 
+# log.setLevel("INFO")
 # communication between spine-user-space and kernel
 nl_sock = None
 # communication between spine-user-space and Env
@@ -30,8 +31,12 @@ kernel_cc = None
 nl_send = None
 # cont status of polling
 cont = threading.Event()
-env_flows = EnvFlows()
 poller = Poller()
+
+# we do require one active flow map here
+env_flows = EnvFlows()
+env_id = "spine_eval"
+global_flow_id = 0
 
 
 class UnixMessageType(Enum):
@@ -40,7 +45,7 @@ class UnixMessageType(Enum):
     END = 2  # episode end
     ALIVE = 3  # alive status
     OBSERVE = 4  # observe the world
-    TERMINATE = 5  # terminate the env
+    TERMINATE = 5  # terminate the env\\
     MEASURE = 6
 
 
@@ -70,7 +75,7 @@ def read_netlink_message(nl_sock: Netlink):
     hdr = SpineMsgHeader()
     if hdr.from_raw(hdr_raw) == None:
         log.error("Failed to parse netlink header")
-
+        return ReturnStatus.Cancel
     if hdr.type == NL_CREATE:
         msg = CreateMsg()
         msg.from_raw(hdr_raw[hdr.hdr_len :])
@@ -78,7 +83,7 @@ def read_netlink_message(nl_sock: Netlink):
         # first find env
         env_id = env_flows.dst_port_to_env_id.get(flow.dst_port, None)
         if env_id == None:
-            # log.warn("unknown dst_port: {}".format(flow.dst_port))
+            log.warn("unknown dst_port: {}".format(flow.dst_port))
             return ReturnStatus.Continue
         # register new flow
         active_flow_map = env_flows.get_env_flows(env_id)
@@ -93,7 +98,6 @@ def read_netlink_message(nl_sock: Netlink):
         log.info("Spine kernel is ready!!")
     elif hdr.type == NL_MEASURE:
         sock_id = hdr.sock_id
-        # print("get a new measure from sock id:", sock_id, client_from_sock[sock_id])
         msg = MeasureMsg()
         msg.from_raw(hdr_raw[hdr.hdr_len :])
         msg_to_unix = {}
@@ -104,8 +108,8 @@ def read_netlink_message(nl_sock: Netlink):
         sent = client_sock.write(json.dumps(msg_to_unix))
         if sent == 0:
             print("Nothing sent...")
-        # print("write to unix.")
-    elif hdr.type == NL_RELEASE:
+        
+    elif hdr.type == NL_RELEASE:        
         # flow release
         sock_id = hdr.sock_id
         # we just remove the cached items
@@ -114,47 +118,51 @@ def read_netlink_message(nl_sock: Netlink):
     return ReturnStatus.Continue
 
 
+def make_flow_id(port):
+    return hash(port)
+
+
 def read_unix_message(unix_sock: IPCSocket):
     raw = unix_sock.read(header=True)
     if raw == None:
         return ReturnStatus.Cancel
     data = json.loads(raw)
-    env_id = str(data["env_id"])
-    flow_id = int(data["flow_id"])
+    # env_id = str(data["env_id"])
+    port = int(data["dst_port"])
     msg_type = data["type"]
-    # associate spine-kernel sock id with flow_id
+
     active_flow_map = env_flows.get_env_flows(env_id)
-    if active_flow_map == None:
-        log.warn("env {} has not registered.".format(env_id))
-        return ReturnStatus.Continue
+    if active_flow_map is None:
+        return ReturnStatus.Cancel
 
     if msg_type == UnixMessageType.START.value:
-        port = int(data["dst_port"])
         # we also need to record the corresponce of env_id and dst_port
+        flow_id = make_flow_id(port)
         env_flows.bind_port_to_env(port, env_id)
         active_flow_map.add_flow_with_dst_port(port, flow_id)
+        log.info("new flow with port: {}, assigned flow id: {}".format(port, flow_id)) 
         return ReturnStatus.Continue
-    elif msg_type == UnixMessageType.TERMINATE.value:
-        active_flow_map.remove_all_env_flows()
-        # deregister env
-        env_flows.release_env(env_id)
-        return ReturnStatus.Cancel
-    elif msg_type == UnixMessageType.END.value:
+
+    flow_id = active_flow_map.get_flowId_by_port(port)
+    assert flow_id != None
+
+    if msg_type == UnixMessageType.END.value:
         # we need the dsr_port id to remove the cache
         sock_id = active_flow_map.get_sockId_by_flowId(flow_id)
+        log.info("flow exits with port: {}".format(port)) 
         port = active_flow_map.remove_flow_by_flowId(flow_id)
         # remove cached items
         env_flows.release_port_to_env(port)
-        return ReturnStatus.Continue
+        return ReturnStatus.Cancel
+    
     elif msg_type == UnixMessageType.MEASURE.value:
         # we need the dsr_port id to remove the cache
         sock_id = active_flow_map.get_sockId_by_flowId(flow_id)
         client_from_sock[sock_id] = unix_sock # cache the client socket
-        # print("get a new measure request from unix! update the sock dict:", sock_id, unix_sock)
         assert nl_send != None
         if data["request_id"] is None:
             return ReturnStatus.Continue
-        # we generally don't need request-id to align request and reply, as the neo_get_state is blocking.
+        
         if sock_id == None:
             print("Warning: a none sock_id")
             return ReturnStatus.Continue
@@ -167,8 +175,8 @@ def read_unix_message(unix_sock: IPCSocket):
     # lookup sock id by flow_id
     sock_id = active_flow_map.get_sockId_by_flowId(flow_id)
     if sock_id == None:
-        # log.warn("unknown flow id: {}".format(flow_id))
-        return ReturnStatus.Continue
+        log.warn("unknown flow id: {}".format(flow_id))
+        return ReturnStatus.Cancel
 
     # spine semantics: None means no action is need
     if data["action"] is None:
@@ -182,21 +190,21 @@ def read_unix_message(unix_sock: IPCSocket):
 def accept_unix_conn(unix_sock: IPCSocket, poller: Poller):
     client: IPCSocket = unix_sock.accept()
     # deal with init message
-    message = client.read()
-    message = json.loads(message)
-    info = int(message.get("type", -1))
-    if info != UnixMessageType.INIT.value:
-        log.error("Incorrect message type: {}, ignore this".format(info))
-        return ReturnStatus.Continue
+    # message = client.read()
+    # message = json.loads(message)
+    # info = int(message.get("type", -1))
+    # in eval mode, each flow directly connects spine with START message
+    # if info != UnixMessageType.START.value:
+    #     log.error("Incorrect message type: {}, ignore this".format(info))
+    #     return ReturnStatus.Continue
     # accept new conn and register to poller
-    env_id = str(message["env_id"])
-    log.info(
-        "Spine get connection from Env, env_id is {}, new ipc fd: {}".format(
+    # env_id = str(message["env_id"])
+    log.debug(
+        "Spine registers flow, env_id is {}, new ipc fd: {}".format(
             env_id, client.fileno()
         )
     )
-    # register to env
-    env_flows.register_env(env_id)
+    
     client.set_noblocking()
     # unix_sock: recv updated parameters and relay to nl_sock
     unix_read_wrapper = partial(read_unix_message, client)
@@ -210,6 +218,8 @@ def polling():
     while not cont.is_set():
         if poller.poll_once() == False:
             # just sleep for a while (10ms)
+            
+            #print("CURRENT POLLER ACTION in polling:", poller.get_all_actions())
             time.sleep(0.01)
 
 
@@ -223,12 +233,15 @@ def main(args):
             callback=listen_callback,
         )
     )
+    # create the default env for spine
+    env_flows.register_env(env_id)
 
     # recv new spine flow info and misc
     netlink_read_wrapper = partial(read_netlink_message, nl_sock)
     poller.add_action(
         Action(nl_sock, PollEvents.READ_ERR_FLAGS, callback=netlink_read_wrapper)
     )
+    # print("CURRENT POLLER ACTION:", poller.get_all_actions())
     threading.Thread(target=polling).run()
 
 
@@ -262,11 +275,11 @@ if __name__ == "__main__":
     # after build netlink socket, we try to drop root privilege
     # build communication sockets
     if args.ipc is None:
-        args.ipc = "{}_{}".format(default_unix_file, args.user)
+        args.ipc = "{}".format(default_unix_file)
     unix_sock = build_unix_sock(args.ipc)
     # mod: 775
     os.chmod(args.ipc, stat.S_IRWXU | stat.S_IRWXG | stat.S_IROTH | stat.S_IXOTH)
     # assign netlink message sender
     kernel_cc = args.alg
-    nl_send = getattr(msg_sender, "send_{}_message".format(kernel_cc))
+    nl_send = getattr(msg_sender, "send_{}_message".format(kernel_cc)) 
     main(args)

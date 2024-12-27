@@ -55,6 +55,7 @@ int serialize_header(char *buf, int bufsize, struct SpineMsgHeader *hdr);
 #define STATE 6
 #define PARAM 7
 #define NEURAL_NETWORK 8
+#define RELEASE 9
 
 // Some messages contain strings.
 #define BIGGEST_MSG_SIZE 32678
@@ -63,18 +64,23 @@ int serialize_header(char *buf, int bufsize, struct SpineMsgHeader *hdr);
 #define CREATE_MSG_SIZE 96
 // size of report msg is approx MAX_REPORT_REG * 8 + 4 + 4
 #define REPORT_MSG_SIZE 900
+
 // ready message is just a u32.
 #define READY_MSG_SIZE 12
+// release message is also just a u32
+#define RELEASE_MSG_SIZE 12
 
 // Some messages contain serialized fold instructions.
 #define MAX_EXPRESSIONS 256 // arbitrary TODO: make configurable
 #define MAX_INSTRUCTIONS 256 // arbitrary, TODO: make configurable
 #define MAX_IMPLICIT_REG 6 // fixed number of implicit registers
 #define MAX_REPORT_REG 110 // measure msg 110 * 8 + 4 + 4
-#define MAX_CONTROL_REG 110 // arbitrary
+#define MAX_CONTROL_REG 20 // arbitrary
 #define MAX_TMP_REG 8
 #define MAX_LOCAL_REG 8
 #define MAX_MUTABLE_REG 222 // # report + # control + cwnd, rate registers
+#define MAX_MEASUREMENG_REG 1
+#define MAX_MEASUREMENT_FIELDS 16
 
 struct __attribute__((packed, aligned(4))) StateMsg {
 	u32 number;
@@ -95,6 +101,9 @@ struct __attribute__((packed, aligned(4))) ReadyMsg {
  * id: The unique id of this datapath.
  */
 int write_ready_msg(char *buf, int bufsize, u32 id);
+
+/* release message: send current sid to user-space */
+int write_release_msg(char *buf, int bufsize, u32 id);
 
 /* CREATE
  * congAlg: the datapath's requested congestion control algorithm (could be overridden)
@@ -152,6 +161,10 @@ struct __attribute__((packed, aligned(1))) UpdateField {
 int check_update_fields_msg(struct spine_datapath *datapath,
 			    struct SpineMsgHeader *hdr, u32 *num_updates,
 			    char *buf);
+
+int check_measure_fields_msg(struct spine_datapath* datapath,
+                struct SpineMsgHeader* hdr, u32* measure_idx,
+				char *buf);
 
 struct __attribute__((packed, aligned(1))) ChangeProgMsg {
 	u32 program_uid;

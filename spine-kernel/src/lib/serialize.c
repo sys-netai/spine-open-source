@@ -35,6 +35,8 @@ int read_header(struct SpineMsgHeader *hdr, char *buf)
 		return sizeof(struct SpineMsgHeader);
 	case UPDATE_FIELDS:
 		return sizeof(struct SpineMsgHeader);
+	case MEASURE:
+		return sizeof(struct SpineMsgHeader);
 	default:
 		return -1;
 	}
@@ -49,8 +51,10 @@ int serialize_header(char *buf, int bufsize, struct SpineMsgHeader *hdr)
 	case STATE:
 	case MEASURE:
 	case READY:
+	case RELEASE:
 		break;
 	default:
+		printk("[spine] Unknown message type, cannot serialize header");
 		return -1;
 	}
 
@@ -69,6 +73,34 @@ int write_ready_msg(char *buf, int bufsize, u32 id)
 	u16 msg_len = sizeof(struct SpineMsgHeader) + sizeof(u32);
 
 	hdr = (struct SpineMsgHeader){ .Type = READY,
+				       .Len = msg_len,
+				       .SocketId = 0 };
+
+	if (bufsize < 0) {
+		return LIBCCP_BUFSIZE_NEGATIVE;
+	}
+
+	if (((u32)bufsize) < hdr.Len) {
+		return LIBCCP_BUFSIZE_TOO_SMALL;
+	}
+
+	ret = serialize_header(buf, bufsize, &hdr);
+	if (ret < 0) {
+		return ret;
+	}
+
+	buf += ret;
+	memcpy(buf, &id, sizeof(u32));
+	return hdr.Len;
+}
+
+int write_release_msg(char *buf, int bufsize, u32 id)
+{
+	struct SpineMsgHeader hdr;
+	int ret;
+	u16 msg_len = sizeof(struct SpineMsgHeader) + sizeof(u32);
+
+	hdr = (struct SpineMsgHeader){ .Type = RELEASE,
 				       .Len = msg_len,
 				       .SocketId = 0 };
 
@@ -125,6 +157,7 @@ int write_measure_msg(char *buf, int bufsize, u32 sid, u32 program_uid,
 {
 	int ret;
 	struct MeasureMsg ms = {
+		/* actually this program_uid is echoed request id */
 		.program_uid = program_uid,
 		.num_fields = num_fields,
 	};
@@ -175,6 +208,21 @@ int check_update_fields_msg(struct spine_datapath *datapath,
 	if (*num_updates > MAX_MUTABLE_REG) {
 		spine_warn("Too many updates!: %u\n", *num_updates);
 		return LIBCCP_UPDATE_TOO_MANY;
+	}
+	return sizeof(u32);
+}
+int check_measure_fields_msg(struct spine_datapath *datapath,
+			     struct SpineMsgHeader *hdr, u32 *measure_idx,
+			     char *buf)
+{
+	if (hdr->Type != MEASURE) {
+		spine_warn("check_measure_fields_msg: hdr.Type != MEASURE");
+		return LIBCCP_UPDATE_TYPE_MISMATCH;
+	}
+
+	*measure_idx = (u32)*buf;
+	if (*measure_idx < 0) {
+		spine_warn("try to fecth invalid measurements") return -1;
 	}
 	return sizeof(u32);
 }

@@ -16,7 +16,7 @@
 #include "exception.hh"
 #include "filesystem.hh"
 #include "ipc_socket.hh"
-#include "json.hpp"
+#include <nlohmann/json.hpp>
 #include "logging.hh"
 #include "serialization.hh"
 #include "socket.hh"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-module="scubic"
+module=${1:-"vanilla"}
 mode="664"
 
 if [ "$EUID" -ne 0 ]; then 
@@ -8,7 +8,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if [ -z "lsmod | grep 'ccp'" ]; then
+if [ -z "lsmod | grep '$module'" ]; then
     echo "$(module) kernel module already loaded"
     exit 1
 fi
@@ -19,4 +19,4 @@ fi
 
 
 ALLOWED=$(sudo cat /proc/sys/net/ipv4/tcp_allowed_congestion_control)
-echo "${ALLOWED} scubic" | sudo tee /proc/sys/net/ipv4/tcp_allowed_congestion_control
+echo "${ALLOWED} ${module}" | sudo tee /proc/sys/net/ipv4/tcp_allowed_congestion_control

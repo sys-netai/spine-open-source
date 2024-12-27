@@ -78,6 +78,8 @@
 struct staged_update {
 	bool control_is_pending[MAX_CONTROL_REG];
 	u64 control_registers[MAX_CONTROL_REG];
+	bool measure_is_pending;
+	u64 measure_registers;
 };
 
 struct spine_priv_state {
@@ -85,13 +87,18 @@ struct spine_priv_state {
 	struct staged_update pending_update;
 };
 
-int init_spine_priv_state(struct spine_datapath *datapath, struct spine_connection *conn);
+int init_spine_priv_state(struct spine_datapath *datapath,
+			  struct spine_connection *conn);
 
 __INLINE__ struct spine_priv_state *
 get_spine_priv_state(struct spine_connection *conn);
 
 int send_conn_create(struct spine_datapath *datapath,
 		     struct spine_connection *conn);
+
+int send_measurement(struct spine_connection *conn, u32 request_id,
+		     u64 *fields, u8 num_fields);
+			  
 
 void free_spine_priv_state(struct spine_connection *conn);
 

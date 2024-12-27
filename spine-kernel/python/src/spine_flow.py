@@ -93,6 +93,12 @@ class ActiveFlowMap(object):
         else:
             return None
 
+    def get_flowId_by_port(self, port):
+        if port in self.dst_port_to_flow_id:
+            return self.dst_port_to_flow_id[port]
+        else:
+            return None
+
     def remove_flow_by_sockId(self, sock_id) -> Optional[int]:
         if sock_id in self.kernel_flows:
             # they should exists in these two maps

@@ -62,6 +62,9 @@ class Poller(object):
         # avoid repeatedly register, key is fd, value is mask
         self.registered_fd = {}
 
+    def get_all_actions(self):
+        return self.__actions
+
     def add_action(self, action: Action):
         # first add to tmp queue
         self.__action_to_add.append(action)
@@ -153,7 +156,6 @@ class Poller(object):
         if not events:
             # logger.warning("Poller: No event in polling")
             return False
-
         # logger.debug("Poller: have action {}".format(len(events)))
         for fd, flag in sorted(events):
             actions = self.get_action_by_fd(fd)

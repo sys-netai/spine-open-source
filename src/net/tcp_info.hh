@@ -7,7 +7,7 @@
 #include <sstream>
 #include <string>
 
-#include "json.hpp"
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
 typedef unsigned int u32;

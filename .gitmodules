@@ -1,39 +1,4 @@
-[submodule "third_party/tunnel"]
-	path = third_party/tunnel
-	url = git@github.com:sys-netai/tunnel.git
-	ignore = dirty
-[submodule "third_party/aurora"]
-	path = third_party/aurora
-	url = git@github.com:sys-netai/aurora.git
-	ignore = dirty
-[submodule "third_party/json"]
-	path = third_party/json
-	url = https://github.com/nlohmann/json.git
-	ignore = dirty
-[submodule "third_party/mahimahi"]
-	path = third_party/mahimahi
-	url = git@github.com:sys-netai/mahimahi.git
-	ignore = dirty
-[submodule "third_party/vivace-kernel"]
-	path = third_party/vivace-kernel
-	url = https://github.com/PCCproject/PCC-Kernel.git
-	ignore = dirty
-[submodule "third_party/spine-kernel"]
-	path = third_party/spine-kernel
-	url = git@github.com:sys-netai/spine-kernel.git
-	ignore = dirty
 [submodule "third_party/DI-engine"]
 	path = third_party/DI-engine
 	url = git@github.com:tianhan4/DI-engine.git
-[submodule "third_party/orca"]
-	path = third_party/orca
-	url = git@github.com:sys-netai/orca.git
-	ignore = dirty
-[submodule "third_party/vivace"]
-	path = third_party/vivace
-	url = git@github.com:sys-netai/vivace.git
-	ignore = dirty
-[submodule "third_party/genericCC"]
-	path = third_party/genericCC
-	url = https://github.com/venkatarun95/genericCC.git
-	ignore = dirty
+	branch = my_change

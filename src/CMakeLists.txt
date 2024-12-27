@@ -17,28 +17,21 @@ CHECK_INCLUDE_FILE_CXX(experimental/filesystem HAVE_EXPERIMENTAL_FILESYSTEM)
 CHECK_INCLUDE_FILE_CXX(filesystem HAVE_FILESYSTEM)
 configure_file(config.h.in ${CMAKE_INCLUDE_OUTPUT_DIRECTORY}/config.h)
 
-# check json 
-set(JSON_DIR ${CMAKE_SOURCE_DIR}/../../third_party/json/)
-set(nlohmann_json_DIR ${JSON_DIR}/build/)
-find_package(nlohmann_json 3.2.0 REQUIRED)
+include(FetchContent)
+
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
+FetchContent_MakeAvailable(json)
 
 # include directory 
-include_directories(./net ${JSON_DIR}/single_include/nlohmann ${CMAKE_INCLUDE_OUTPUT_DIRECTORY})
+include_directories(./net ${CMAKE_INCLUDE_OUTPUT_DIRECTORY} ${json_SOURCE_DIR}/include)
 add_subdirectory(net)
 
 # target
-add_executable(client client.cc) 
 add_executable(server server.cc)
-add_executable(passive_client passive_client.cc)
-# test client for evaluation 
-add_executable(client_eval client_eval.cc)
 add_executable(client_spine client_spine.cc)
 
 # link libraries
 target_link_libraries(server net pthread)
-target_link_libraries(client PRIVATE nlohmann_json::nlohmann_json net pthread stdc++fs)
-target_link_libraries(passive_client PRIVATE nlohmann_json::nlohmann_json net pthread stdc++fs)
-target_link_libraries(client_eval PRIVATE nlohmann_json::nlohmann_json net pthread stdc++fs)
 target_link_libraries(client_spine PRIVATE nlohmann_json::nlohmann_json net pthread stdc++fs)
 
 # enable test

@@ -25,9 +25,20 @@ src/env/data*
 src/train/ckpt_dir
 src/train/eval_dir
 src/train/train_dir
+.cache/
 
 # trace
 src/env/trace/*.trace
 
 # orca log
 src/eval/rl_logging
+
+*.mod*
+*.cmd
+*.o
+__pycache__
+*.pyc
+
+*.ko
+Module*
+module*
