@@ -1,0 +1,26 @@
+{
+    "name": "eval_astraea",
+    "flows": 3,
+    "runtime": 200,
+    "flow_interval": {
+        "all": 10
+    },
+    "flow_run_time": {
+        "mode": "normal",
+        "mean": 50
+    },
+    "flow_cc": {
+        "all": "astraea"
+    },
+    "uplink_trace": "100mbps.trace",
+    "downlink_trace": "100mbps.trace",
+    "uplink_queue": "droptail",
+    "bdp":1,
+    "uplink_queue_args": "bytes=375000",
+    "one_way_delay": 15,
+    "extra_delay": {
+        "all": 0
+    },
+    "log_level": "INFO",
+    "control_interval": 20
+}

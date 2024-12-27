@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# tmp files
+tmp/*
+link_capacity.log
+log
+
+# c++ lib
+*.a
+*.so
+*.o
+client 
+server
+
+# cmake
+build
+config.h
+
+# tmp files
+data.json
+src/env/data*
+src/train/ckpt_dir
+src/train/eval_dir
+src/train/train_dir
+
+# trace
+src/env/trace/*.trace
+
+# orca log
+src/eval/rl_logging
