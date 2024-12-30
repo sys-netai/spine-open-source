@@ -27,11 +27,11 @@ from helpers.utils import Params
 from helpers.logger import logger
 from helpers.ipc_socket import IPCSocket
 from helpers.poller import PollEvents, ReturnStatus, Action, Poller
-from env.message import MessageType
+from helpers.message import MessageType
 torch.set_num_threads(1)
 
 
-from train.config.serial.vanilla_train_seed0.total_config import exp_config
+from helpers.total_config import exp_config
 #from model.backup.oct_7_max_known.total_config import exp_config
 
 model_path = path.abspath(
