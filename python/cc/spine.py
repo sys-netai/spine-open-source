@@ -8,11 +8,6 @@ import arg_parser
 import context
 from context import src_dir
 
-
-# from model.current.total_config import exp_config
-
-
-
 def main():
     args = arg_parser.receiver_first()
 
@@ -26,7 +21,6 @@ def main():
 
     # variables for inference
     pyhelper = path.join(context.src_dir, "eval", "spine_infer.py")
-    model_path = path.join(context.src_dir, "model", "current", "ckpt_best.pth.tar")
     log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
     os.environ["LOG_LEVEL"] = log_level
 
@@ -65,7 +59,6 @@ def main():
                 "--port={}".format(args.port),
                 "--cong={}".format(args.cong),
                 "--pyhelper={}".format(pyhelper),
-                "--model={}".format(model_path),
                 "--interval={}".format(args.interval),
             ]
         if args.id != None:

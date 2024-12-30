@@ -25,17 +25,18 @@ def main():
 def get_bandwidth_list(input_path):
     count = 0
     last_number = 0
-    bandwidth_list = []
+    bandwidth_list = [0]
+    time_counts = 0
     with open(input_path, "r") as trace:
         for line in trace.readlines():
-            number = int(line)
-            # print("line:", number)
-            count += 1
-            if (last_number + 1) % GRADULARITY == 0 and number != last_number:
-                bw = count * MTU / GRADULARITY / 1e3
-                bandwidth_list.append(bw)
-                count = 0
-            last_number = number
+            time_unit = 1 + int(line) // GRADULARITY
+            if len(bandwidth_list) == time_unit:
+                bandwidth_list[-1] += 1
+            else:
+                for j in range(time_unit - len(bandwidth_list)):
+                    bandwidth_list.append(0)
+        for i in range(len(bandwidth_list)):
+            bandwidth_list[i] = bandwidth_list[i] * MTU / GRADULARITY / 1e3
     return bandwidth_list
         
 

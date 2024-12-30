@@ -7,11 +7,7 @@ import numpy as np
 from . import context
 
 from helpers.logger import logger
-
-STATE_DIM = 10
-ACTION_DIM = 1
-GLOBAL_DIM = 12
-
+from .definitions import STATE_DIM, ACTION_DIM
 
 def compute_reward(states: dict, world_size, config):
     return 0

@@ -24,11 +24,38 @@ from . import context
 from helpers.subprocess_wrappers import check_call, check_output, call
 from helpers.logger import logger
 
+def traverse_flows(world_config):
+    if "all" in world_config["flow_cc"] and world_config["flow_cc"]["all"] == "spine":
+        yield world_config["flow_cc"], world_config["flows"]
+    else:
+        num_our_flows = 0
+        flow_info = copy.deepcopy(world_config["flow_cc"])
+        keys = list(world_config["flow_cc"].keys())
+        current_flow = 0
+        def iterate_rest(num_our_flows, current_flow):
+            if current_flow == len(keys):
+                print("generate:", flow_info, num_our_flows)
+                yield flow_info, num_our_flows
+            else:
+                if type(world_config["flow_cc"][keys[current_flow]]) == list:
+                    for flow_type in world_config["flow_cc"][keys[current_flow]]:
+                        flow_info[keys[current_flow]] = flow_type
+                        yield from iterate_rest(num_our_flows + 1 if flow_type == "spine" else num_our_flows, 
+                                                current_flow + 1)
+                else:
+                    flow_type = world_config["flow_cc"][keys[current_flow]]
+                    flow_info[keys[current_flow]] = flow_type
+                    yield from iterate_rest(num_our_flows + 1 if flow_type == "spine" else num_our_flows, 
+                                            current_flow + 1)
+                            
+        yield from iterate_rest(num_our_flows, current_flow)
+            
+
 def loop_world_generator(world_config):
     # generate the world in a loop
     trace_list = world_config["trace_list"]
     delay_list = world_config["delay_list"]
-    # first bw, then delay, then buffer, then loss.
+    # first bw, then delay, then buffer, then loss, then protocols
     for base_delay in delay_list:
         for bw in trace_list:
             bw_str = "%dmbps.trace"%bw
@@ -45,41 +72,41 @@ def loop_world_generator(world_config):
                 else:
                     random_loss_list = [0]
                 for random_loss in random_loss_list:
-                    # still random cnoose the variance and extra_delay
-                    if "extra_delay" in world_config.keys():
-                        extra_delays = dict()
-                        for i in range(world_config["flows"]):
-                            extra_delays[str(i)] = world_config["extra_delay"][i]
-                    else:
-                        extra_delays = dict()
-                        for i in range(world_config["flows"]):
-                            extra_delays[str(i)] = random.choice(world_config["extra_delay_list"])
-                    
-                    
-                    new_world = copy.deepcopy(world_config)
-                    new_world.pop("trace_list", None)
-                    new_world.pop("extra_delay_list", None)
-                    new_world.pop("delay_list", None)
-                    new_world.pop("bdp_list", None)
-                    new_world.pop("random_loss_list", None)
-                    new_world.pop("uplink_queue_args_list", None)
-                    if "variance_freq_list" in world_config.keys():
-                        variance_freq = random.choice(world_config['variance_freq_list'])
-                        variance_range = random.choice(world_config['variance_range_list'])
-                        new_world['variance_freq'] = variance_freq
-                        new_world['variance_range'] = variance_range
-                        
-                    new_world["bdp"] = bdp
-                    new_world["extra_delay"] = extra_delays
-                    new_world["uplink_trace"] = bw_str
-                    new_world["downlink_trace"] = bw_str
-                    new_world["uplink_queue_args"] = "bytes=%d"%uplink_queue_args
-                    new_world["one_way_delay"] = base_delay
-                    new_world['random_loss'] = random_loss
-                    yield new_world
-    
-    
-    
+                    for flow_info, num_our_flows in traverse_flows(world_config):
+                        print("info:", flow_info)
+                        # still random cnoose the variance and extra_delay
+                        if "extra_delay" in world_config.keys():
+                            extra_delays = dict()
+                            for i in range(world_config["flows"]):
+                                extra_delays[str(i)] = world_config["extra_delay"][i]
+                        else:
+                            extra_delays = dict()
+                            for i in range(world_config["flows"]):
+                                extra_delays[str(i)] = random.choice(world_config["extra_delay_list"])    
+                        new_world = copy.deepcopy(world_config)
+                        new_world["flow_cc"] = copy.deepcopy(flow_info)
+                        new_world["num_our_flows"] = num_our_flows
+                        new_world.pop("trace_list", None)
+                        new_world.pop("extra_delay_list", None)
+                        new_world.pop("delay_list", None)
+                        new_world.pop("bdp_list", None)
+                        new_world.pop("random_loss_list", None)
+                        new_world.pop("uplink_queue_args_list", None)
+                        if "variance_freq_list" in world_config.keys():
+                            variance_freq = random.choice(world_config['variance_freq_list'])
+                            variance_range = random.choice(world_config['variance_range_list'])
+                            new_world['variance_freq'] = variance_freq
+                            new_world['variance_range'] = variance_range
+                            
+                        new_world["bdp"] = bdp
+                        new_world["extra_delay"] = extra_delays
+                        new_world["uplink_trace"] = bw_str
+                        new_world["downlink_trace"] = bw_str
+                        new_world["uplink_queue_args"] = "bytes=%d"%uplink_queue_args
+                        new_world["one_way_delay"] = base_delay
+                        new_world['random_loss'] = random_loss
+                        print("new world:", new_world)
+                        yield new_world
 
 def generate_world(world_config):
     trace_list = world_config["trace_list"]
@@ -105,9 +132,13 @@ def generate_world(world_config):
     else:
         num_our_flows = 0
         for flow_id in new_world["flow_cc"].keys():
+            if type(new_world["flow_cc"][flow_id]) == list:
+                new_world["flow_cc"][flow_id] = random.choice(new_world["flow_cc"][flow_id])
             if new_world["flow_cc"][flow_id] == "spine":
                 num_our_flows += 1
+    
     new_world["num_our_flows"] = num_our_flows
+    
     if "variance_freq_list" in world_config.keys():
         variance_freq = random.choice(world_config['variance_freq_list'])
         variance_range = random.choice(world_config['variance_range_list'])
@@ -122,7 +153,6 @@ def generate_world(world_config):
     if "random_loss_list" in world_config.keys():
         random_loss = random.choice(world_config['random_loss_list'])
         new_world['random_loss'] = random_loss
-    
     print(new_world)
     return new_world
 
@@ -149,87 +179,6 @@ def fill_array_with_dict(target_dict, idx_required=False):
         return np.array(idx), np.array(values)
     else:
         return np.array(values)
-
-
-def take_a_photo_cwnd(
-    thr_histories,
-    act_histories,
-    given_act_histories,
-    lat_histories,
-    reward_histories,
-    metric1_histories,
-    metric2_histories,
-    metric3_histories,
-    metric4_histories,
-    env,
-    filename,
-):
-    if len(reward_histories) == 0:
-        print("empty photo!")
-        return
-    print("take a photo!")
-    reward_xs, reward_ys = fill_array_with_dict(reward_histories, True)
-    metric1_histories = fill_array_with_dict(metric1_histories)
-    metric2_histories = fill_array_with_dict(metric2_histories)
-    metric3_histories = fill_array_with_dict(metric3_histories)
-    metric4_histories = fill_array_with_dict(metric4_histories)
-    flow_xs = [None] * env.world.num_our_flows
-    thr_ys = [None] * env.world.num_our_flows
-    act_ys = [None] * env.world.num_our_flows
-    lat_ys = [None] * env.world.num_our_flows
-
-    given_act_ys = [None] * env.world.num_our_flows
-    given_act_xs = [None] * env.world.num_our_flows
-
-    for i in range(env.world.num_our_flows):
-        # print("histories:", thr_histories[i],act_histories[i],lat_histories[i])
-        flow_xs[i], thr_ys[i] = fill_array_with_dict(thr_histories[i], True)
-        given_act_xs[i], given_act_ys[i] = fill_array_with_dict(
-            given_act_histories[i], True
-        )
-        act_ys[i] = fill_array_with_dict(act_histories[i])
-        lat_ys[i] = fill_array_with_dict(lat_histories[i])
-        # print(i)
-        # print("thr_ys:",thr_ys[i])
-        # print("act_ys:",act_ys[i])
-        # print("lat_ys:",lat_ys[i])
-    sum_x = np.unique(np.concatenate([flow_xs[i] for i in range(env.world.num_our_flows)]))
-    ys_sum = np.zeros_like(sum_x)
-
-    # rendering
-    fig, axs = plt.subplots(4, 2, figsize=(16, 20))
-    axs[0, 0].set_title("throughput")
-    axs[1, 0].set_title("cwnd")
-    axs[2, 0].set_title("latency")
-    axs[3, 0].set_title("reward")
-    axs[0, 1].set_title("latency-reward")
-    axs[1, 1].set_title("thr-reward")
-    axs[2, 1].set_title("fairness-reward")
-    axs[3, 1].set_title("stability-reward")
-    for i in range(env.world.num_our_flows):
-        ys_sum += np.interp(sum_x, flow_xs[i], thr_ys[i], left=0, right=0)
-        axs[0, 0].plot(flow_xs[i], thr_ys[i])
-        axs[1, 0].plot(flow_xs[i], act_ys[i])
-        axs[1, 0].plot(given_act_xs[i], given_act_ys[i], linewidth=0.5)
-        axs[2, 0].plot(flow_xs[i], lat_ys[i])
-
-    axs[3, 0].plot(reward_xs, reward_ys)
-    axs[0, 1].plot(reward_xs, metric1_histories)
-    axs[1, 1].plot(reward_xs, metric2_histories)
-    axs[2, 1].plot(reward_xs, metric3_histories)
-    axs[3, 1].plot(reward_xs, metric4_histories)
-    # plot capacity
-    capacity_x = np.arange(0,math.ceil(sum_x[-1]), 0.1)
-    capacity_y = np.array(env.world.bandwidth_list) * 1e6 / 8
-    (line,) = axs[0, 0].plot(capacity_x, capacity_y[:len(capacity_x)], color="black", linewidth=1)
-    line.set_label("capacity")
-    
-    # plot sum bandwidth
-    (line,) = axs[0, 0].plot(sum_x, ys_sum, color="red", linewidth=2)
-    line.set_label("sum")
-    axs[0, 0].legend()
-    plt.savefig(filename + "%dbw-%dd-%dbdp-%.3floss.png" % (env.world.bandwidth, env.world.one_way_delay, env.world.bdp, env.world.random_loss), dpi=300)
-
 
 def take_a_photo_policy(
     thr_histories,
@@ -262,8 +211,6 @@ def take_a_photo_policy(
 
     sampled_action = list(given_act_histories[0].values())[0]
     action_dim = len(sampled_action)
-    # print("!!!", given_act_histories[0])
-    # print("!!!", given_act_histories[1])
     assert action_dim < 5
     given_act_ys = [[None for i in range(env.world.num_our_flows)] for i in range(action_dim)]
     given_act_xs = [[None for i in range(env.world.num_our_flows)] for i in range(action_dim)]
@@ -281,14 +228,9 @@ def take_a_photo_policy(
         
         for j in range(action_dim):
             policy_action = {key: given_act_histories[i][key][j] for key in given_act_histories[i]}
-            # print("policy_action of j:", j,  policy_action)
             given_act_xs[j][i], given_act_ys[j][i] = fill_array_with_dict(
                 policy_action, True
             )
-        # print(i)
-        # print("thr_ys:",thr_ys[i])
-        # print("act_ys:",act_ys[i])
-        # print("lat_ys:",lat_ys[i])
     sum_x = np.unique(np.concatenate([flow_xs[i] for i in range(env.world.num_our_flows)]))
     ys_sum = np.zeros_like(sum_x)
 

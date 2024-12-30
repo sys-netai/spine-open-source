@@ -20,7 +20,6 @@
 #include "exception.hh"
 #include "filesystem.hh"
 #include "ipc_socket.hh"
-#include <nlohmann/json.hpp>
 #include "logging.hh"
 #include "pid.hh"
 #include "poller.hh"
@@ -28,6 +27,8 @@
 #include "socket.hh"
 #include "system_runner.hh"
 #include "tcp_info.hh"
+
+#include <nlohmann/json.hpp>
 
 using namespace std;
 using namespace std::literals;
@@ -160,17 +161,14 @@ void usage_error(const string& program_name) {
   cerr << endl;
   cerr << "Options = --ip=IP_ADDR --port=PORT --cong=ALGORITHM"
           "--interval=INTERVAL (Milliseconds) --pyhelper=PYTHON_PATH "
-          "--model=MODEL_PATH --id=None --perf-log=None"
+          "--id=None --perf-log=None"
        << endl;
   cerr << endl;
   cerr << "Default congestion control algorithms for incoming TCP is CUBIC; "
        << endl
        << "Default control interval is 10ms; " << endl
        << "Default flow id is None; " << endl
-       << "pyhelper specifies the path of Python-inference script; " << endl
-       << "model-path specifies the pre-trained model, and will be passed to "
-          "python inference module"
-       << endl;
+       << "pyhelper specifies the path of Python-inference script; " << endl;
 
   throw runtime_error("invalid arguments");
 }
@@ -192,7 +190,6 @@ int main(int argc, char** argv) {
       {"ip", required_argument, nullptr, 'a'},
       {"port", required_argument, nullptr, 'p'},
       {"pyhelper", required_argument, nullptr, 'h'},
-      {"model", required_argument, nullptr, 'm'},
       {"cong", optional_argument, nullptr, 'c'},
       {"interval", optional_argument, nullptr, 't'},
       {"id", optional_argument, nullptr, 'f'},
@@ -201,7 +198,7 @@ int main(int argc, char** argv) {
 
   /* use RL inference or not */
   bool use_RL = false;
-  string ip, service, pyhelper, model, cong_ctl, interval, id, perf_log_path;
+  string ip, service, pyhelper, cong_ctl, interval, id, perf_log_path;
   while (true) {
     const int opt = getopt_long(argc, argv, "", command_line_options, nullptr);
     if (opt == -1) { /* end of options */
@@ -222,9 +219,6 @@ int main(int argc, char** argv) {
       break;
     case 'l':
       perf_log_path = optarg;
-      break;
-    case 'm':
-      model = optarg;
       break;
     case 'p':
       service = optarg;
@@ -254,14 +248,11 @@ int main(int argc, char** argv) {
   // dst port
   int port = stoi(service);
   std::chrono::milliseconds control_interval(20ms);
-  if (not(pyhelper.empty() or model.empty())) {
-    // first check pyhelper and model
+  if (not pyhelper.empty()) {
+    // first check pyhelper
     if (not fs::exists(pyhelper)) {
       throw runtime_error("Pyhelper does not exist");
     }
-    // if (not fs::exists(model)) {
-      // throw runtime_error("Trained model does not exist");
-    // }
     /* IPC and control interval */
     string ipc_dir = "spine_client";
     // return true if created or dir exists
@@ -277,8 +268,7 @@ int main(int argc, char** argv) {
     LOG(DEBUG) << "Client: IPC listen at " << ipc_path;
 
     // start child process of Python helper for inference
-    vector<string> prog_args{pyhelper, "--ipc-path", ipc_path, "--model-path",
-                             model,    "--dst-port", to_string(port) };
+    vector<string> prog_args{pyhelper, "--ipc-path", ipc_path,  "--dst-port", to_string(port) };
     astraea_pyhelper = std::make_unique<ChildProcess>(
         pyhelper,
         [&pyhelper, &prog_args]() { return ezexec(pyhelper, prog_args); });
@@ -295,7 +285,7 @@ int main(int argc, char** argv) {
     /* has checked all things, we can use RL */
     use_RL = true;
   } else {
-    LOG(WARNING) << "Trained model must be specified, or " << ALG
+    LOG(WARNING) << "Pyhelper must be specified, or " << ALG
                  << " will be pure TCP with " << cong_ctl;
   }
 

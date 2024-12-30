@@ -22,33 +22,29 @@ from ding.policy import Policy, create_policy
 
 import context
 from context import src_dir
-from agent.definitions import transform_state, map_vanilla_action, map_vanilla_action_with_noise
+from agent.definitions import transform_state, map_vanilla_action
 from helpers.utils import Params
 from helpers.logger import logger
 from helpers.ipc_socket import IPCSocket
 from helpers.poller import PollEvents, ReturnStatus, Action, Poller
-from helpers.message import MessageType
+from env.message import MessageType
 torch.set_num_threads(1)
 
-
-from helpers.total_config import exp_config
-#from model.backup.oct_7_max_known.total_config import exp_config
-
+# This is where you can define your own model (both with the config file and the checkpoint)
+from train.config.serial.vanilla_train_seed0.total_config import exp_config
 model_path = path.abspath(
     path.join(
-        src_dir, "train/config/serial/vanilla_train_seed0/ckpt/ckpt_best_21000.pth.tar"
-        #"model/backup/oct_7_max_known", "ckpt", "ckpt_best_28000.pth.tar"
+        src_dir, "model/Dec23_stable/ckpt/ckpt_best_44500.pth.tar"
     )
 )
+
+
 spine_ipc_path = "/tmp/spine_ipc"
 
 def main():
     sys.stdout = sys.__stderr__
     sys.stderr.write("[spine pyhelper] starting spine inference process\n")
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model-path", type=str, default = model_path, help="path of saved models"
-    ) # in fact is not used.
     parser.add_argument(
         "--ipc-path", type=str, help="IPC path of communication", required=True
     )
@@ -66,21 +62,10 @@ def main():
 
     args = parser.parse_args()
 
-    # create_config.policy.type += "_command"
-    # cfg = compile_config(
-    #     main_config,
-    #     seed=0,
-    #     env=None,
-    #     auto=True,
-    #     create_cfg=create_config,
-    #     save_cfg=True,
-    #     save_path="eval_config.py",
-    # )
     cfg = EasyDict(exp_config)
     # # Prepare policy
     policy = create_policy(cfg.policy, enable_field=["eval"])
     sys.stderr.write(f"PyHelper: Loading model from: {model_path}\n")
-    #state_dict = torch.load(args.model_path, map_location="cpu") # not used!
     state_dict = torch.load(model_path, map_location="cpu")
     policy.eval_mode.load_state_dict(state_dict)
     eval_policy = policy.eval_mode
@@ -110,12 +95,12 @@ def main():
     spine_ipc.write(json.dumps(msg))
     last_action = [0,0,0,0]
     last_trigger = 0
-    # def process_state():
     while True:
         info = client_ipc.read()
         info = json.loads(info)
         state = info["state"]
-        obs, _ = transform_state(state, current_policy = last_action) #, last_trigger = last_trigger)
+        # print("current state:", state)
+        obs, _ = transform_state(state, current_policy = last_action)
         obs = {0: {"agent_state": torch.Tensor(obs)}}
         policy_output = eval_policy.forward(obs)[0]
         output = {
@@ -127,27 +112,12 @@ def main():
             a = output["action"].flatten().tolist()
             last_action = a
             a = map_vanilla_action(a)
+            # print("action:", a)
             reply = {}
             reply["type"] = MessageType.ALIVE.value
             reply["dst_port"] = args.dst_port
             reply["action"] = a
-        
-        # action_state = {}
-        # action_state["vanilla_alpha"] =  100
-        # action_state["vanilla_beta"] =  500
-        # action_state["vanilla_gamma"] =  100
-        # action_state["vanilla_delta"] =  717
-        # logger.info("RL: action is {}".format(act))
             spine_ipc.write(json.dumps(reply))
-
-        # return ReturnStatus.Continue
-
-    #
-    # poller = Poller()
-    # poller.add_action(Action(client_ipc, PollEvents.READ_ERR_FLAGS, process_state))
-    #
-    # while True:
-    #     poller.poll_once()
         
 if __name__ == "__main__":
     main()
