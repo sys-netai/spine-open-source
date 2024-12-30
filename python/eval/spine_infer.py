@@ -27,7 +27,7 @@ from helpers.utils import Params
 from helpers.logger import logger
 from helpers.ipc_socket import IPCSocket
 from helpers.poller import PollEvents, ReturnStatus, Action, Poller
-from env.message import MessageType
+from helpers.message import MessageType
 torch.set_num_threads(1)
 
 # This is where you can define your own model (both with the config file and the checkpoint)
