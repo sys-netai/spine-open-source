@@ -43,7 +43,7 @@ make -j
 1. Run spine kernel helper (for cross-space communication between kernel and user space spine program)
 ```bash
 cd spine-kernel/python/src
-sudo python spine_eval.py -u $USER
+sudo python3 spine_eval.py -u $USER
 ```
 
 2. Run spine server
