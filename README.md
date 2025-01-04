@@ -1,4 +1,7 @@
 # Spine
+Spine is a performant DRL-based congestion control algorithm for the Internet with ultra-low inference overhead. For details, please check the paper [Spine](https://cse.hkust.edu.hk/~kaichen/papers/spine-conext22.pdf).
+
+This is the inference implementation with pre-trained model. The training architecture will be released later.
 
 ## Prerequisites
 1. Please install the customized kernel of Astraea. See details in [Astraea](https://github.com/xudongliao/astraea-open-source/blob/main/kernel/deb/README.md).
